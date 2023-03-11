@@ -6,8 +6,11 @@ mflag=0
 bflag=0
 aval=0000-00-00
 bval=9999-99-99
-gval='.'
+gval='^$'
+gvalin=''
 dir=$(pwd)
+path=$(pwd)
+
 
 ArgError() {
     if [ "$gflag" -gt 1 ]; then
@@ -26,6 +29,15 @@ ArgError() {
         err=1
     fi
 
+    if [ "$dflag" -gt 1 ]; then
+        err=1
+    fi
+
+    #d and g use at the same time
+    if [ "$dflag" -gt 0 ]  && [ "$gflag" -gt 0 ]; then
+        err=1
+    fi
+
     if [ -n "$err" ]; then
         echo "ERROR:"
         exit "$err"
@@ -35,7 +47,7 @@ ArgError() {
 CreateMoleRC() {
     #create mole_rc
     if [[ ! -e $MOLE_RC ]]; then
-        touch $MOLE_RC
+        touch "$MOLE_RC"
     fi
 }
 
@@ -74,6 +86,14 @@ IsFile() {
     fi
 }
 
+RunEditor() {
+    if [ -n "$path" ]; then
+        "$editor_path" "$path"
+    else
+        echo "Nothing matches parameters"
+        exit 1
+    fi
+}
 Filters() {
     if [ -n "$gflag" ]; then
         #ProcessGroups
@@ -85,15 +105,48 @@ File() {
     date=$(date +'%Y-%m-%d')
     timestamp=$(date +%s)
     dir=$(dirname "$path")
-    echo "$path,$gval,$date,$timestamp,$dir" >>$MOLE_RC
+    echo "$path,$gvalin,$date,$timestamp,$dir/" >>$MOLE_RC
     "$editor_path" "$path"
+}
+NoMArg() {
+    awkpath="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$1}' g="$gval"  p="$path" | sort -k4 -t ',' -n | tail -1"
+    awkrow="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g="$gval"  p="$path" | sort -k4 -t ',' -n | tail -1"
+    path=$(eval $awkpath)
+    row=$(eval $awkrow)
+    echo $row >>$MOLE_RC
+}
+
+MArg() {
+    awkpath="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$1}' g="$gval"  p="$path" | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ *[0-9]+ //g'"
+    awkrow="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g="$gval"  p="$path" | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ *[0-9]+ //g'"
+    echo $awkpath
+    path=$(eval $awkpath)
+    row=$(eval $awkrow)
+    echo $row >>$MOLE_RC
+    echo "$path"
+}
+
+Set_Dir() {
+    if [ -n "$path" ]; then
+        dir=$path
+        echo "DEBUG: DIR: $dir"
+    fi
 }
 
 Directory() {
-    
-    awkin="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2 ~ /$gval/ {print \$0}' | sort -k4 -t ',' -n | tail -1"
-    idk=$(eval $awkin)
-    echo $idk
+    echo "DEBUG: In directory"
+
+    Set_Dir
+
+    dir=$path
+
+    if [ "$mflag" -eq 0 ]; then
+        NoMArg
+    else
+        MArg
+    fi
+    RunEditor
+
     Filters
 }
 Exec() {
@@ -105,11 +158,12 @@ Exec() {
     fi
 }
 
-while getopts hg:mb:a: name; do
+while getopts dhg:mb:a: name; do
     case $name in
     h) PrintHelp ;;
     g)
         gflag+=1
+        gvalin="$OPTARG"
         gval="$OPTARG"
         ;;
     m)
@@ -123,6 +177,10 @@ while getopts hg:mb:a: name; do
         bflag+=1
         bval="$OPTARG"
         ;;
+    d)
+        dflag+=1
+        gval='.'
+;;
     ?)
         printf "Usage: %s: [-a] [-b value] args\n" $0
         exit 2
@@ -132,7 +190,13 @@ done
 
 CreateMoleRC
 shift "$((OPTIND - 1))"
-path=$(readlink -f $1)
+
+#if [ -n "$1" ]; then
+# path=$(readlink -f "$1")
+path=$1
+echo "path je $path"
+#fi
+
 ArgError
 SetEditor
 echo "DEBUG: Using: $editor_path"
