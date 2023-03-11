@@ -4,6 +4,7 @@ gflag=0
 aflag=0
 mflag=0
 bflag=0
+dflag=0
 aval=0000-00-00
 bval=9999-99-99
 gval='^$'
@@ -46,6 +47,11 @@ ArgError() {
 
 CreateMoleRC() {
     #create mole_rc
+  if [[  -z $MOLE_RC ]]; then
+        echo "MOLE_RC not found"
+        exit 1 
+    fi
+
     if [[ ! -e $MOLE_RC ]]; then
         touch "$MOLE_RC"
     fi
@@ -94,13 +100,6 @@ RunEditor() {
         exit 1
     fi
 }
-Filters() {
-    if [ -n "$gflag" ]; then
-        #ProcessGroups
-        echo
-    fi
-
-}
 File() {
     date=$(date +'%Y-%m-%d')
     timestamp=$(date +%s)
@@ -123,7 +122,6 @@ MArg() {
     path=$(eval $awkpath)
     row=$(eval $awkrow)
     echo $row >>$MOLE_RC
-    echo "$path"
 }
 
 Set_Dir() {
@@ -146,8 +144,6 @@ Directory() {
         MArg
     fi
     RunEditor
-
-    Filters
 }
 Exec() {
     IsFile
