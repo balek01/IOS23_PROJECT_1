@@ -12,7 +12,6 @@ gvalin=''
 dir=$(pwd)
 path=$(pwd)
 
-
 ArgError() {
     if [ "$gflag" -gt 1 ]; then
         err=1
@@ -35,7 +34,7 @@ ArgError() {
     fi
 
     #d and g use at the same time
-    if [ "$dflag" -gt 0 ]  && [ "$gflag" -gt 0 ]; then
+    if [ "$dflag" -gt 0 ] && [ "$gflag" -gt 0 ]; then
         err=1
     fi
 
@@ -47,9 +46,9 @@ ArgError() {
 
 CreateMoleRC() {
     #create mole_rc
-  if [[  -z $MOLE_RC ]]; then
+    if [[ -z $MOLE_RC ]]; then
         echo "MOLE_RC not found"
-        exit 1 
+        exit 1
     fi
 
     if [[ ! -e $MOLE_RC ]]; then
@@ -83,7 +82,7 @@ IsFile() {
     else
         lastchar=${path: -1}
         if [ "$lastchar" == "/" ]; then
-            echo "DEBUG: NonExisting Directory is $path"
+            echo "ERROR: NonExisting Directory is $path"
             exit 1
         elif [ -n "$lastchar" ]; then
             is_file=1
@@ -96,32 +95,52 @@ RunEditor() {
     if [ -n "$path" ]; then
         "$editor_path" "$path"
     else
-        echo "Nothing matches parameters"
+        echo "Nothing matches given parameters"
         exit 1
     fi
 }
-File() {
+
+GetTimestampDate() {
     date=$(date +'%Y-%m-%d')
     timestamp=$(date +%s)
-    dir=$(dirname "$path")
-    echo "$path,$gvalin,$date,$timestamp,$dir/" >>$MOLE_RC
-    "$editor_path" "$path"
-}
-NoMArg() {
-    awkpath="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$1}' g="$gval"  p="$path" | sort -k4 -t ',' -n | tail -1"
-    awkrow="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g="$gval"  p="$path" | sort -k4 -t ',' -n | tail -1"
-    path=$(eval $awkpath)
-    row=$(eval $awkrow)
-    echo $row >>$MOLE_RC
 }
 
-MArg() {
-    awkpath="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$1}' g="$gval"  p="$path" | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ *[0-9]+ //g'"
-    awkrow="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g="$gval"  p="$path" | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ *[0-9]+ //g'"
-    echo $awkpath
-    path=$(eval $awkpath)
-    row=$(eval $awkrow)
-    echo $row >>$MOLE_RC
+UpdateRow() {
+    GetTimestampDate
+    IFS=',' read -ra rowarr <<<"$row"
+    rowarr[2]="$date"
+    rowarr[3]="$timestamp"
+
+    row=$(
+        IFS=','
+        echo "${rowarr[*]}"
+    )
+    echo "$row" >>"$MOLE_RC"
+}
+
+Awkgetrow() {
+    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g="$gval"  p=\"^$path$\""
+
+    if [ "$mflag" -eq 0 ]; then
+        #noMflag
+        AWKROWTAIL=" | sort -k4 -t ',' -n | tail -1"
+    else
+        AWKROWTAIL=" | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ *[0-9]+ //g'"
+    fi
+
+    awkgetrow=$AWKROWBASE$AWKROWTAIL
+    echo "$awkgetrow"
+    
+        row=$(eval "$awkgetrow")
+    if [ -z "$row" ]; then
+        echo "Nothing matches given parameters"
+        exit 1
+    fi
+}
+
+Awkgetpath() {
+    awkpath="awk -F ',' '{print \$1}'<<< $row"
+    path=$(eval "$awkpath")
 }
 
 Set_Dir() {
@@ -136,15 +155,22 @@ Directory() {
 
     Set_Dir
 
-    dir=$path
+    #dir=$path
 
-    if [ "$mflag" -eq 0 ]; then
-        NoMArg
-    else
-        MArg
-    fi
+    Awkgetrow
+    Awkgetpath
+    UpdateRow
+
     RunEditor
 }
+
+File() {
+    GetTimestampDate
+    dir=$(dirname "$path")
+    echo "$path,$gvalin,$date,$timestamp,$dir/" >>$MOLE_RC
+    "$editor_path" "$path"
+}
+
 Exec() {
     IsFile
     if [ -n "$is_file" ]; then
@@ -176,7 +202,7 @@ while getopts dhg:mb:a: name; do
     d)
         dflag+=1
         gval='.'
-;;
+        ;;
     ?)
         printf "Usage: %s: [-a] [-b value] args\n" $0
         exit 2
