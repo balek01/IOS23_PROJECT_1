@@ -108,16 +108,15 @@ UpdateRow() {
     IFS=',' read -ra rowarr <<<"$row"
     rowarr[2]="$date"
     rowarr[3]="$timestamp"
-
     row=$(
         IFS=','
         echo "${rowarr[*]}"
     )
-    echo "$row" >>"$MOLE_RC"
+    echo "$row"
 }
 
 GetAwkRow() {
-    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g=\"^$gval$\"  p=\"^$path$\""
+    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g=\"$gval\"  p=\"^$path$\""
 
     if [ "$mflag" -eq 0 ]; then
         #noMflag
@@ -144,13 +143,26 @@ GetAwkPath() {
 SetPath() {
     if [ -z "$path" ]; then
         path=$(pwd)
-        path=$(realpath $path)
+        path=$(realpath "$path")
         echo "DEBUG: DIR: $path"
     else
-        
+
         path=$(realpath "$path")
 
     fi
+}
+
+GetGroups() {
+
+    IFS=',' read -ra groups <<<"$gval"
+    gval=""
+    # Loop over the array and print each element
+    for group in "${groups[@]}"; do
+
+        gval+="^$group$|"
+    done
+    #always false
+    gval+="/(?=a)b/"
 }
 
 Directory() {
@@ -165,12 +177,29 @@ Directory() {
     RunEditor
 }
 
-File() {
-    GetTimestampDate
+CheckForCommas() {
+
+    if [[ "$gval" == *","* ]]; then
+        echo "It's there."
+        exit 1
+    fi
+}
+
+AddRow() {
     dir=$(realpath "$path")
     dir=$(dirname "$dir")
-    echo "$path,$gvalin,$date,$timestamp,$dir" >>$MOLE_RC
+    echo "$path,$gvalin,$date,$timestamp,$dir" >>"$MOLE_RC"
+}
+
+OpenEditor() {
     "$editor_path" "$path"
+}
+
+File() {
+    GetTimestampDate
+    CheckForCommas
+    OpenEditor
+
 }
 
 Exec() {
@@ -206,7 +235,7 @@ while getopts dhg:mb:a: name; do
         gval=''
         ;;
     ?)
-        printf "Usage: %s: [-a] [-b value] args\n" $0
+        printf "Usage: %s: [-a] [-b value] args\n" "$0"
         exit 2
         ;;
     esac
@@ -216,7 +245,7 @@ CreateMoleRC
 shift "$((OPTIND - 1))"
 
 if [ -n "$1" ]; then
- path=$(readlink -f "$1")
+    path=$(readlink -f "$1")
 
 fi
 
