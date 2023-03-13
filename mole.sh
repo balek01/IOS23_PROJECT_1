@@ -7,10 +7,8 @@ bflag=0
 dflag=0
 aval=0000-00-00
 bval=9999-99-99
-gval='^$'
 gvalin=''
 dir=$(pwd)
-path=$(pwd)
 
 ArgError() {
     if [ "$gflag" -gt 1 ]; then
@@ -118,8 +116,8 @@ UpdateRow() {
     echo "$row" >>"$MOLE_RC"
 }
 
-Awkgetrow() {
-    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g="$gval"  p=\"^$path$\""
+GetAwkRow() {
+    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g=\"^$gval$\"  p=\"^$path$\""
 
     if [ "$mflag" -eq 0 ]; then
         #noMflag
@@ -130,35 +128,38 @@ Awkgetrow() {
 
     awkgetrow=$AWKROWBASE$AWKROWTAIL
     echo "$awkgetrow"
-    
-        row=$(eval "$awkgetrow")
+
+    row=$(eval "$awkgetrow")
     if [ -z "$row" ]; then
         echo "Nothing matches given parameters"
         exit 1
     fi
 }
 
-Awkgetpath() {
+GetAwkPath() {
     awkpath="awk -F ',' '{print \$1}'<<< $row"
     path=$(eval "$awkpath")
 }
 
-Set_Dir() {
-    if [ -n "$path" ]; then
-        dir=$path
-        echo "DEBUG: DIR: $dir"
+SetPath() {
+    if [ -z "$path" ]; then
+        path=$(pwd)
+        path=$(realpath $path)
+        echo "DEBUG: DIR: $path"
+    else
+        
+        path=$(realpath "$path")
+
     fi
 }
 
 Directory() {
     echo "DEBUG: In directory"
 
-    Set_Dir
-
-    #dir=$path
-
-    Awkgetrow
-    Awkgetpath
+    SetPath
+    GetGroups
+    GetAwkRow
+    GetAwkPath
     UpdateRow
 
     RunEditor
@@ -166,8 +167,9 @@ Directory() {
 
 File() {
     GetTimestampDate
-    dir=$(dirname "$path")
-    echo "$path,$gvalin,$date,$timestamp,$dir/" >>$MOLE_RC
+    dir=$(realpath "$path")
+    dir=$(dirname "$dir")
+    echo "$path,$gvalin,$date,$timestamp,$dir" >>$MOLE_RC
     "$editor_path" "$path"
 }
 
@@ -201,7 +203,7 @@ while getopts dhg:mb:a: name; do
         ;;
     d)
         dflag+=1
-        gval='.'
+        gval=''
         ;;
     ?)
         printf "Usage: %s: [-a] [-b value] args\n" $0
@@ -213,12 +215,14 @@ done
 CreateMoleRC
 shift "$((OPTIND - 1))"
 
-#if [ -n "$1" ]; then
-# path=$(readlink -f "$1")
-path=$1
-echo "path je $path"
-#fi
+if [ -n "$1" ]; then
+ path=$(readlink -f "$1")
 
+fi
+
+if [ -z "$gval" ]; then
+    gval='.*'
+fi
 ArgError
 SetEditor
 echo "DEBUG: Using: $editor_path"
