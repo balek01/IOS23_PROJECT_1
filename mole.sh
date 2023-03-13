@@ -103,6 +103,7 @@ RunEditor() {
 
 GetTimestampDate() {
     date=$(date +'%Y-%m-%d')
+    datetime=$(date +'%Y-%m-%d_%H-%M-%S')
     timestamp=$(date +%s)
 }
 
@@ -111,6 +112,7 @@ UpdateRow() {
     IFS=',' read -ra rowarr <<<"$row"
     rowarr[2]="$date"
     rowarr[3]="$timestamp"
+    rowarr[6]="$datetime"
     row=$(
         IFS=','
         echo "${rowarr[*]}"
@@ -168,7 +170,6 @@ GetGroups() {
         gval=""
     fi
 
-    # Loop over the array and print each element
     for group in "${groups[@]}"; do
 
         gval+="^$group$|"
@@ -219,7 +220,7 @@ AddRow() {
     realpath=$(realpath "$givenpath")
     file=$(basename "$realpath")
     dir=$(dirname "$realpath")
-    echo "$givenpath,$gvalin,$date,$timestamp,$dir,$file" >>"$MOLE_RC"
+    echo "$realpath,$gvalin,$date,$timestamp,$dir,$file,$datetime" >>"$MOLE_RC"
 }
 
 File() {
@@ -228,8 +229,8 @@ File() {
     AddRow
     RunEditor
 }
-GetUnsortedList() {
-    unsorted=$(echo "$row" | cut -d ',' -f 2,6 | sort | uniq | awk -F ',' '{
+GetList() {
+    list=$(echo "$row" | cut -d ',' -f 2,6 | sort | uniq | awk -F ',' '{
   paths[$2][length(paths[$2])] = $1
 } END {
   for (path in paths) {
@@ -252,18 +253,58 @@ GetUnsortedList() {
     print ""
   }
 }' | column -t -s ";" | sed 's/ //1' | sort)
-    echo "$unsorted"
+    echo "$list"
 }
 
 List() {
     SetPath
     GetGroups
     GetAwkRow
-    GetUnsortedList
+    GetList
 
 }
+
+GetDirectories() {
+    count=0
+    for directory in "${dirarray[@]}"; do
+        count+=1
+        real=$(realpath "$directory")
+        dirregex+="^$real$|"
+    done
+    if [ 0 -eq "$count" ]; then
+        dirregex="^.*$|"
+    fi
+    #always false
+    dirregex+="/(?=a)b/"
+    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$5~p {print \$1 \";\" \$7}'  p=\"$dirregex\""
+
+    dirrows=$(eval "$AWKROWBASE")
+    if [ -z "$dirrows" ]; then
+    echo "ERROR: Nothing matches parameters"
+    exit 1
+    fi
+
+}
+
+CreateSecretOutput() {
+   
+    echo "$dirrows" |sort| awk -F';' '{ dates[$1] = dates[$1] ";" $2 
+    } END {
+     for (path in dates) {
+        sub(/^;/, "", dates[path]); print path ";" dates[path] 
+    } 
+    }'
+}
+Secret() {
+    GetDirectories
+    CreateSecretOutput
+}
+
 Exec() {
-    if [ -n "$is_list" ]; then
+
+    if [ -n "$is_secretlog" ]; then
+        Secret
+    elif [ -n "$is_list" ]; then
 
         List
     else
@@ -276,8 +317,26 @@ Exec() {
     fi
 }
 
+GetRealPath() {
+
+    if [ -z "$givenpath" ]; then
+        givenpath=$(pwd)
+    fi
+
+    givenpath=$(realpath "$givenpath")
+    if [ -z "$givenpath" ]; then
+        echo "ERROR: $givenpath is not valid path."
+        exit 1
+    fi
+}
 if [ "$1" = "list" ]; then
     is_list=1
+    shift
+
+fi
+
+if [ "$1" = "secret-log" ]; then
+    is_secretlog=1
     shift
 
 fi
@@ -310,15 +369,18 @@ while getopts dhg:mb:a: name; do
         ;;
     esac
 done
-
-CreateMoleRC
-
 shift "$((OPTIND - 1))"
 
-if [ -n "$1" ]; then
-    givenpath=$(readlink -f "$1")
-
+if [ -n "$is_secretlog" ]; then
+    while [ $# -gt 0 ]; do
+        dirarray+=("$1")
+        shift
+    done
 fi
+CreateMoleRC
+givenpath=$1
+
+GetRealPath
 
 ArgError
 SetEditor
