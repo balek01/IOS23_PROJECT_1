@@ -10,6 +10,8 @@ bval=9999-99-99
 gvalin=''
 dir=$(pwd)
 tail=1
+realmole=$(realpath "$MOLE_RC")
+
 
 ArgError() {
     if [ "$gflag" -gt 1 ]; then
@@ -45,13 +47,13 @@ ArgError() {
 
 CreateMoleRC() {
     #create mole_rc
-    if [[ -z $MOLE_RC ]]; then
+    if [[ -z $realmole ]]; then
         echo "MOLE_RC not found"
         exit 1
     fi
 
-    if [[ ! -e $MOLE_RC ]]; then
-        touch "$MOLE_RC"
+    if [[ ! -e $realmole ]]; then
+        touch "$realmole"
     fi
 }
 
@@ -117,11 +119,11 @@ UpdateRow() {
         IFS=','
         echo "${rowarr[*]}"
     )
-    echo "$row" >>"$MOLE_RC"
+    echo "$row" >>"$realmole"
 }
 
 GetAwkRow() {
-    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g=\"$gval\"  p=\"^$path$\""
+    AWKROWBASE="cat $realmole | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$2~g  && \$5~p {print \$0}' g=\"$gval\"  p=\"^$path$\""
 
     if [ ! "$is_list" ]; then
         if [ "$mflag" -eq 0 ]; then
@@ -179,7 +181,7 @@ GetGroups() {
 }
 GetExistingFile() {
 
-    mole_rc_count=$(wc -l "$MOLE_RC" | awk '{print $1}')
+    mole_rc_count=$(wc -l "$realmole" | awk '{print $1}')
 
     if [ "$tail" -eq "$mole_rc_count" ]; then
         echo "Nothing matches "
@@ -220,7 +222,7 @@ AddRow() {
     realpath=$(realpath "$givenpath")
     file=$(basename "$realpath")
     dir=$(dirname "$realpath")
-    echo "$realpath,$gvalin,$date,$timestamp,$dir,$file,$datetime" >>"$MOLE_RC"
+    echo "$realpath,$gvalin,$date,$timestamp,$dir,$file,$datetime" >>"$realmole"
 }
 
 File() {
@@ -276,7 +278,7 @@ GetDirectories() {
     fi
     #always false
     dirregex+="/(?=a)b/"
-    AWKROWBASE="cat $MOLE_RC | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$5~p {print \$1 \";\" \$7}'  p=\"$dirregex\""
+    AWKROWBASE="cat $realmole | awk -F ',' '\$3 > \"$aval\" && \$3 < \"$bval\" && \$5~p {print \$1 \";\" \$7}'  p=\"$dirregex\""
 
     dirrows=$(eval "$AWKROWBASE")
     if [ -z "$dirrows" ]; then
@@ -287,17 +289,27 @@ GetDirectories() {
 }
 
 CreateSecretOutput() {
-   
-    echo "$dirrows" |sort| awk -F';' '{ dates[$1] = dates[$1] ";" $2 
+   echo $dirrows
+    tozip=$(echo "$dirrows" |sort| awk -F';' '{ dates[$1] = dates[$1] ";" $2 
     } END {
      for (path in dates) {
         sub(/^;/, "", dates[path]); print path ";" dates[path] 
     } 
-    }'
+    }'|sort)
+
+}
+
+Zip(){
+    GetTimestampDate
+    if [ ! -d "$HOME/.mole/" ]; then
+        mkdir -p "$HOME/.mole";
+    fi
+    $(echo "$tozip" | bzip2 > "$HOME"/.mole/"log_$USER"_"$datetime".bz2)
 }
 Secret() {
     GetDirectories
     CreateSecretOutput
+    Zip
 }
 
 Exec() {
