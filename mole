@@ -7,11 +7,13 @@ bflag=0
 dflag=0
 aval=0000-00-00
 bval=9999-99-99
+debug=False
 gvalin=''
+gval='.*'
 dir=$(pwd)
 tail=1
-realmole=$(realpath "$MOLE_RC")
 
+#TODO: remove debug
 
 ArgError() {
     if [ "$gflag" -gt 1 ]; then
@@ -40,16 +42,57 @@ ArgError() {
     fi
 
     if [ -n "$err" ]; then
-        echo "ERROR:"
-        exit "$err"
+        ERROR "Iilegal combination of options."
+    fi
+}
+
+DEBUG() {
+    if [ $debug == True ]; then
+        echo "DEBUG: ""$1"
+    fi
+}
+
+ERROR() {
+    echo >&2 "ERROR: ""$1"
+    exit 1
+}
+
+SecretArgCheck() {
+
+    if [[ "$gflag" -gt 0 || "$mflag" -gt 0 || "$dflag" -gt 0 ]]; then
+
+        ERROR "Option secret-log does not support -g option."
+    fi
+}
+
+ListArgCheck() {
+
+    if [ "$mflag" -gt 0 ]; then
+
+        ERROR "Option secret-log does not support -g option."
+
+    fi
+}
+
+HelpArgCheck() {
+
+    if [[ $gflag -gt 0 || $mflag -gt 0 || $aflag -gt 0 || $bflag -gt 0 || $dflag -gt 0 ]]; then
+        ERROR "Ilegal combination of options."
+    fi
+}
+
+FileArgCheck() {
+
+    if [[ $mflag -gt 0 || $aflag -gt 0 || $bflag -gt 0 || $dflag -gt 0 ]]; then
+        ERROR "Ilegal combination of options."
     fi
 }
 
 CreateMoleRC() {
     #create mole_rc
+    realmole=$(realpath "$MOLE_RC" 2>/dev/null)
     if [[ -z $realmole ]]; then
-        echo "MOLE_RC not found"
-        exit 1
+        ERROR "MOLE_RC not found"
     fi
 
     if [[ ! -e $realmole ]]; then
@@ -58,7 +101,36 @@ CreateMoleRC() {
 }
 
 PrintHelp() {
-    echo "Usage:"
+    printf "
+NAME 
+    Makes One’s Life Easier
+SYNOPSIS:
+    mole -h
+    mole [-g GROUP] FILE
+    mole [-m] [FILTERS] [DIRECTORY]
+    mole list [FILTERS] [DIRECTORY]
+
+OPTIONS
+    mole -h
+        -h Display help information.
+
+    mole [-g GROUP] FILE \t Opens the specified FILE.
+        -g \t \t \t File will be assigned to a group named GROUP.
+
+    mole [-m] [FILTERS] [DIRECTORY] \t  Selects a file from DIRECTORY to open
+        - -m \t \t \t Selects the file that was opened most frequently.
+        - if no directory is specified, the current directory is assumed
+      
+    mole list [FILTERS] [DIRECTORY] \t  Displays a list of files that were opened
+        - if no directory is specified, the current directory is assumed. 
+        
+ FILTERS
+    [-g GROUP1[,GROUP2[,...]]] - Specifies groups.
+    [-d] - Records of files that has no GROUP specified.
+    Options -d and -g cannot be used together.
+    [-a DATE] - Records of files opened (edited) before this date will not be considered.
+    [-b DATE] - Records of files opened (edited) after this date will not be considered.
+    The DATE argument is in the format YYYY-MM-DD.\n"
     exit 0
 }
 
@@ -74,20 +146,19 @@ SetEditor() {
 }
 
 IsFile() {
-    echo "Given path $givenpath"
+    DEBUG "Given path $givenpath"
     if [ -d "$givenpath" ]; then
-        echo "DEBUG: Directory is $givenpath"
+        DEBUG "Directory is $givenpath"
     elif [ -f "$givenpath" ]; then
         is_file=1
-        echo "DEBUG: File is $givenpath"
+        DEBUG "File is $givenpath"
     else
         lastchar=${givenpath: -1}
         if [ "$lastchar" == "/" ]; then
-            echo "ERROR: NonExisting Directory is $givenpath"
-            exit 1
+            ERROR "NonExisting Directory is $givenpath"
         elif [ -n "$lastchar" ]; then
             is_file=1
-            echo "DEBUG: NonExisting File is $givenpath"
+            DEBUG "NonExisting File is $givenpath"
         fi
     fi
 }
@@ -98,8 +169,7 @@ RunEditor() {
     elif [ -n "$path" ]; then
         "$editor_path" "$path"
     else
-        echo "Nothing matches given parameters"
-        exit 1
+        ERROR "Nothing matches given parameters"
     fi
 }
 
@@ -130,17 +200,16 @@ GetAwkRow() {
             #noMflag
             AWKROWTAIL=" | sort -k4 -t ',' -n | tail -$tail| head -n 1"
         else
-            AWKROWTAIL=" | sort | uniq -c | sort -rn | head -n 1 | sed -E 's/^ *[0-9]+ //g'"
+            AWKROWTAIL=" |sort -k1 -t ',' -n  | tail -$tail |head -n 1 "
         fi
     fi
     awkgetrow=$AWKROWBASE$AWKROWTAIL
-    echo "$awkgetrow"
+    DEBUG "$awkgetrow"
 
     row=$(eval "$awkgetrow")
 
     if [ -z "$row" ]; then
-        echo "Nothing matches given parameters"
-        exit 1
+        ERROR "Nothing matches given parameters."
     fi
 
 }
@@ -148,17 +217,17 @@ GetAwkRow() {
 GetAwkPath() {
     awkpath="awk -F ',' '{print \$1}'<<< $row"
     path=$(eval "$awkpath")
-    echo "$path"
+    DEBUG "Getawkpath: $path"
 }
 
 SetPath() {
     if [ -z "$givenpath" ]; then
         path=$(pwd)
-        path=$(realpath "$path")
-        echo "DEBUG: DIR: $path"
+        path=$(realpath "$path" 2>/dev/null)
+        DEBUG "DIR: $path"
     else
 
-        path=$(realpath "$givenpath")
+        path=$(realpath "$givenpath" 2>/dev/null)
 
     fi
 }
@@ -184,12 +253,12 @@ GetExistingFile() {
     mole_rc_count=$(wc -l "$realmole" | awk '{print $1}')
 
     if [ "$tail" -eq "$mole_rc_count" ]; then
-        echo "Nothing matches "
-        exit 1
+        ERROR "Nothing matches given parameters."
     fi
 
     if [ ! -f "$path" ]; then
-        echo "File $path does not exist"
+        DEBUG "File $path does not exist"
+
         tail=$((tail + 1))
         GetFile
     fi
@@ -202,7 +271,7 @@ GetFile() {
     GetExistingFile
 }
 Directory() {
-    echo "DEBUG: In directory"
+    DEBUG "In directory"
     GetGroups
     GetFile
 
@@ -213,15 +282,15 @@ Directory() {
 CheckForCommas() {
 
     if [[ "$gval" == *","* ]]; then
-        echo "Commas are not allowed in group name."
-        exit 1
+        ERROR "Commas are not allowed in group name."
     fi
 }
 
 AddRow() {
-    realpath=$(realpath "$givenpath")
+    realpath=$(realpath "$givenpath" 2>/dev/null)
     file=$(basename "$realpath")
     dir=$(dirname "$realpath")
+ 
     echo "$realpath,$gvalin,$date,$timestamp,$dir,$file,$datetime" >>"$realmole"
 }
 
@@ -231,8 +300,8 @@ File() {
     AddRow
     RunEditor
 }
-GetList() {
-    list=$(echo "$row" | cut -d ',' -f 2,6 | sort | uniq | awk -F ',' '{
+PrintList() {
+    list=$(echo "$row"  cut -d ',' -f 2,6 | sort | uniq | awk -F ',' '{
   paths[$2][length(paths[$2])] = $1
 } END {
   for (path in paths) {
@@ -262,7 +331,7 @@ List() {
     SetPath
     GetGroups
     GetAwkRow
-    GetList
+    PrintList
 
 }
 
@@ -270,8 +339,12 @@ GetDirectories() {
     count=0
     for directory in "${dirarray[@]}"; do
         count+=1
-        real=$(realpath "$directory")
-        dirregex+="^$real$|"
+        real=$(realpath "$directory" 2>/dev/null)
+
+        if [ -d "$real" ]; then
+            dirregex+="^$real$|"
+        fi
+
     done
     if [ 0 -eq "$count" ]; then
         dirregex="^.*$|"
@@ -282,29 +355,27 @@ GetDirectories() {
 
     dirrows=$(eval "$AWKROWBASE")
     if [ -z "$dirrows" ]; then
-    echo "ERROR: Nothing matches parameters"
-    exit 1
+        ERROR "Nothing matches parameters"
     fi
 
 }
 
 CreateSecretOutput() {
-   echo $dirrows
-    tozip=$(echo "$dirrows" |sort| awk -F';' '{ dates[$1] = dates[$1] ";" $2 
+    tozip=$(echo "$dirrows" | sort | awk -F';' '{ dates[$1] = dates[$1] ";" $2 
     } END {
      for (path in dates) {
         sub(/^;/, "", dates[path]); print path ";" dates[path] 
     } 
-    }'|sort)
+    }' | sort)
 
 }
 
-Zip(){
+Zip() {
     GetTimestampDate
     if [ ! -d "$HOME/.mole/" ]; then
-        mkdir -p "$HOME/.mole";
+        mkdir -p "$HOME/.mole"
     fi
-    $(echo "$tozip" | bzip2 > "$HOME"/.mole/"log_$USER"_"$datetime".bz2)
+    $(bzip2 <<< "$tozip" > "$HOME/.mole/log_"$USER"_"$datetime".bz2")
 }
 Secret() {
     GetDirectories
@@ -315,13 +386,16 @@ Secret() {
 Exec() {
 
     if [ -n "$is_secretlog" ]; then
+        SecretArgCheck
+
         Secret
     elif [ -n "$is_list" ]; then
-
+        ListArgCheck
         List
     else
         IsFile
         if [ -n "$is_file" ]; then
+            FileArgCheck
             File
         else
             Directory
@@ -335,12 +409,37 @@ GetRealPath() {
         givenpath=$(pwd)
     fi
 
-    givenpath=$(realpath "$givenpath")
+    givenpath=$(realpath "$givenpath" 2>/dev/null)
     if [ -z "$givenpath" ]; then
-        echo "ERROR: $givenpath is not valid path."
-        exit 1
+        ERROR "Given path $givenpath is not valid."
     fi
 }
+
+CheckRealPath() {
+    is_realpath=$(command -v realpath)
+    if [ -z "$is_realpath" ]; then
+        ERROR "Utility realpath could not be found."
+    fi
+}
+
+CheckDateFormat() {
+
+    if [ $aflag -gt 0 ]; then
+        if ! date -d "$aval" +"%Y-%m-%d" >/dev/null 2>&1; then
+
+            ERROR "After date $aval is not in YYYY-MM-DD format."
+        fi
+    fi
+
+    if [ $bflag -gt 0 ]; then
+        if ! date -d "$bval" +"%Y-%m-%d" >/dev/null 2>&1; then
+
+            ERROR "Before date $bval is not in YYYY-MM-DD format."
+        fi
+    fi
+
+}
+
 if [ "$1" = "list" ]; then
     is_list=1
     shift
@@ -354,11 +453,17 @@ if [ "$1" = "secret-log" ]; then
 fi
 while getopts dhg:mb:a: name; do
     case $name in
-    h) PrintHelp ;;
+    h)
+        HelpArgCheck
+        PrintHelp
+        ;;
     g)
         gflag+=1
         gvalin="$OPTARG"
-        gval="$OPTARG"
+        if [ -n "$OPTARG" ]; then
+            gval="$OPTARG"
+        fi
+
         ;;
     m)
         mflag+=1
@@ -366,18 +471,19 @@ while getopts dhg:mb:a: name; do
     a)
         aflag+=1
         aval="$OPTARG"
+        CheckDateFormat
         ;;
     b)
         bflag+=1
         bval="$OPTARG"
+        CheckDateFormat
         ;;
     d)
         dflag+=1
-        gval='.*'
+        gval=''
         ;;
     ?)
-        printf "Usage: %s: [-a] [-b value] args\n" "$0"
-        exit 2
+        ERROR "Unknown option use mole -h to see usage."
         ;;
     esac
 done
@@ -389,6 +495,8 @@ if [ -n "$is_secretlog" ]; then
         shift
     done
 fi
+
+CheckRealPath
 CreateMoleRC
 givenpath=$1
 
@@ -396,7 +504,7 @@ GetRealPath
 
 ArgError
 SetEditor
-echo "DEBUG: Using: $editor_path"
+DEBUG "Using: $editor_path"
 Exec
 
 exit 0
