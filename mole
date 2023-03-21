@@ -13,7 +13,6 @@ gval='.*'
 dir=$(pwd)
 tail=1
 
-#TODO: remove debug
 
 ArgError() {
     if [ "$gflag" -gt 1 ]; then
@@ -301,7 +300,7 @@ File() {
     RunEditor
 }
 PrintList() {
-    list=$(echo "$row"  cut -d ',' -f 2,6 | sort | uniq | awk -F ',' '{
+    list=$(echo "$row" | cut -d ',' -f 2,6 | sort -f -d | uniq | awk -F ',' '{
   paths[$2][length(paths[$2])] = $1
 } END {
   for (path in paths) {
@@ -323,7 +322,7 @@ PrintList() {
 
     print ""
   }
-}' | column -t -s ";" | sed 's/ //1' | sort)
+}' | column -t -s ";" | sed 's/ //1' | sort -f -d)
     echo "$list"
 }
 
@@ -366,7 +365,7 @@ CreateSecretOutput() {
      for (path in dates) {
         sub(/^;/, "", dates[path]); print path ";" dates[path] 
     } 
-    }' | sort)
+    }' | sort -f -d)
 
 }
 
